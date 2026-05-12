@@ -146,33 +146,52 @@ let currentQuickItem = null;
 // 🔥 FIXED: Hybrid Loading with Duplicate Check by Barcode
 async function loadProducts() {  
   try {  
-    let combinedData = {};
+    let combinedData = {}; // Duplicate hatane ke liye object
 
-    // 1. Fetch from Google Sheet (Priority)
+    // 1. Google Sheet se data mangwana
     try {
+        console.log("Sheet se data aa raha hai...");
         const sheetRes = await fetch(SHEET_URL + "?action=getInventory");
         const sheetItems = await sheetRes.json();
-        sheetItems.forEach(item => { 
-            if(item.Barcode) combinedData[item.Barcode] = item; 
-        });
-    } catch(e) { console.log("Sheet empty or error"); }
+        
+        if(sheetItems && sheetItems.length > 0) {
+            sheetItems.forEach(item => { 
+                if(item.Barcode) {
+                    combinedData[item.Barcode] = item; // Barcode ko ID ki tarah use kar rahe hain
+                }
+            });
+        }
+    } catch(e) { console.log("Sheet Khali hai ya Link galat hai: " + e); }
 
-    // 2. Fetch from Firebase
+    // 2. Firebase se data mangwana
     try {
+        console.log("Firebase se data aa raha hai...");
         const snap = await db.collection("products").get();
         snap.forEach(doc => {
             const data = doc.data();
-            // Agar barcode already sheet se aa gaya hai toh skip karega
+            // Agar barcode sheet mein nahi hai, tabhi ise add karenge
             if(data.Barcode && !combinedData[data.Barcode]) { 
                 combinedData[data.Barcode] = data; 
             }
         });
-    } catch(e) { console.log("Firebase empty or error"); }
+    } catch(e) { console.log("Firebase error: " + e); }
 
+    // 3. Object ko wapas List (Array) mein badalna
     allProducts = Object.values(combinedData);
-    renderProducts(allProducts);
-  } catch(e) { alert("❌ Load Error"); }  
-}  
+
+    // 4. Screen par dikhana
+    if (allProducts.length > 0) {
+        renderProducts(allProducts);
+    } else {
+        document.getElementById("products").innerHTML = "<p class='text-center w-full col-span-2 py-10 text-gray-400'>Koi product nahi mila!</p>";
+    }
+
+  } catch(e) { 
+      console.error(e);
+      alert("❌ Load Error: Check Console"); 
+  }  
+}
+
   
 function renderProducts(list) {  
     let html = "";   
