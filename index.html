@@ -159,26 +159,28 @@ async function loadProducts() {
 function renderProducts(list) {
     let html = "";
     list.forEach(p => {
-        // Image Fix: Column name 'Image' ya 'Image URL' dono check karega
-        const img = p.Image || p["Image URL"] || 'https://via.placeholder.com/150';
-        const name = p["Product Name"] || p.Name || "No Name";
+        // Aapki sheet ke columns ke exact naam (Name aur Image)
+        const img = p.Image || 'https://via.placeholder.com/150?text=No+Photo';
+        const name = p.Name || "No Name";
         const price = p.Price || 0;
 
         html += `
         <div class="bg-white p-2 rounded-2xl shadow-md border border-gray-100">
-          <img src="${img}" class="h-32 w-full object-cover rounded-xl" onerror="this.src='https://via.placeholder.com/150'">
+          <img src="${img}" class="h-32 w-full object-cover rounded-xl" onerror="this.src='https://via.placeholder.com/150?text=Error'">
+          
           <div class="flex text-[#FFD700] text-[8px] mt-1">
               <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
           </div>
+          
           <h3 class="text-[11px] font-bold mt-1 truncate">${name}</h3>
           <p class="text-red-600 font-black text-sm mb-2">₹${price}</p>
           
-          <!-- +Cart button hata diya gaya hai -->
-          <button onclick='openQuickOrder(${JSON.stringify(p)})' class="w-full bg-[#FFD700] text-black text-[10px] py-2 rounded-lg font-black shadow-sm">BUY NOW</button>
+          <button onclick='openQuickOrder(${JSON.stringify(p)})' class="w-full bg-[#FFD700] text-black text-[10px] py-2.5 rounded-lg font-black shadow-sm active:scale-95">BUY NOW</button>
         </div>`;
     });
     document.getElementById("products").innerHTML = html;
 }
+
 
 
 function searchProduct() {
