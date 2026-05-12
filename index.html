@@ -151,7 +151,7 @@ async function loadProducts() {
     // 1. Google Sheet se data mangwana
     try {
         console.log("Sheet se data aa raha hai...");
-        const sheetRes = await fetch(SHEET_URL + "?action=https://docs.google.com/spreadsheets/d/1hrQtwiB-aNiEmrx17uXT7k4BmvmN1QS3zIIAdH7e-m0");
+        const sheetRes = await fetch(SHEET_URL + "?action=getinventory");
         const sheetItems = await sheetRes.json();
         
         if(sheetItems && sheetItems.length > 0) {
