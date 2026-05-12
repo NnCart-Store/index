@@ -9,7 +9,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-img { background:#eee; }
+img { background:#eee; min-height: 100px; }
 .product-card:active { transform: scale(0.98); }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -89,13 +89,54 @@ img { background:#eee; }
 
 <div id="products" class="grid grid-cols-2 gap-3 p-3"></div>
 
+<!-- Order Cart Box -->
+<div id="orderBox" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
+        <h2 class="text-xl font-black mb-2 text-red-600 border-b pb-2">Your Cart</h2>
+        <div id="cartItems" class="space-y-2 mb-4"></div>
+        <div class="border-t pt-2 mb-4">
+            <p class="flex justify-between font-bold">Total: <span id="total">0</span></p>
+        </div>
+        <div class="space-y-3">
+            <input id="cName" placeholder="आपका नाम" class="w-full p-3 bg-gray-50 border rounded-xl outline-none">
+            <input id="mobile" placeholder="मोबाइल नंबर" class="w-full p-3 bg-gray-50 border rounded-xl outline-none">
+            <textarea id="address" placeholder="पूरा पता" class="w-full p-3 bg-gray-50 border rounded-xl outline-none h-20"></textarea>
+        </div>
+        <div class="flex gap-2 mt-6">
+            <button onclick="document.getElementById('orderBox').classList.add('hidden')" class="flex-1 py-3 font-bold text-gray-500">Close</button>
+            <button onclick="submitOrder()" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg">Place Order</button>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Buy Modal -->
+<div id="quickOrderBox" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
+        <h2 class="text-xl font-black mb-2 text-red-600 border-b pb-2 italic uppercase">Quick Order</h2>
+        <p id="selectedItemName" class="font-bold text-gray-700 mb-4 bg-gray-100 p-2 rounded-lg text-sm"></p>
+        <div class="space-y-3">
+            <input id="qName" placeholder="आपका नाम" class="w-full p-3 bg-gray-50 border rounded-xl outline-none">
+            <input id="qMobile" placeholder="मोबाइल नंबर" class="w-full p-3 bg-gray-50 border rounded-xl outline-none">
+            <div class="grid grid-cols-2 gap-2">
+                <input id="qSize" placeholder="Size (L, XL)" class="p-3 bg-gray-50 border rounded-xl outline-none">
+                <input id="qColor" placeholder="Color" class="p-3 bg-gray-50 border rounded-xl outline-none">
+            </div>
+            <textarea id="qAddress" placeholder="पूरा पता (Full Address)" class="w-full p-3 bg-gray-50 border rounded-xl outline-none h-20"></textarea>
+        </div>
+        <div class="flex gap-2 mt-6">
+            <button onclick="closeQuickOrder()" class="flex-1 py-3 font-bold text-gray-400">CANCEL</button>
+            <button onclick="confirmQuickOrder()" class="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg border-b-4 border-green-800">CONFIRM ✅</button>
+        </div>
+    </div>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
 <script>
-// 🔥 CONFIG 
+// 🔥 CONFIG
 const firebaseConfig = {
-  apiKey: "AIzaSyCH2di4fAKw8vA80Cv8BMobi-v1p0I", 
+  apiKey: "YOUR_API_KEY",
   authDomain: "nncart.firebaseapp.com",
   projectId: "nncart"
 };
@@ -107,159 +148,120 @@ let allProducts = [];
 let cart = [];
 let currentQuickItem = null;
 
-// 🔥 FIXED LOAD PRODUCTS (Firebase + Sheet Integration)
 async function loadProducts() {
   try {
-    // Pehle sheet se data mangwayein taaki real-time rahe
-    const response = await fetch(SHEET_URL + "?action=getInventory");
-    allProducts = await response.json();
-    renderProducts(allProducts);
-  } catch(e) { 
-    // Fallback to Firebase if Sheet fails
     const snap = await db.collection("products").get();
     allProducts = snap.docs.map(doc => doc.data());
     renderProducts(allProducts);
-  }
+  } catch(e) { alert("❌ Load Error"); }
 }
 
-// 🔥 FIXED RENDER PRODUCTS (Sahi Mapping)
 function renderProducts(list) {
-    let html = ""; // Variable declare kiya
+    let html = "";
     list.forEach(p => {
-        // Variable Mapping Fix: 'Image' and 'Name'
+        // IMAGE LINK FIX: Hum 'p.Image' check kar rahe hain jo ki image display karega, link nahi.
         const img = p.Image || p["Image URL"] || 'https://via.placeholder.com/150';
-        const name = p.Name || p["Product Name"] || "No Name";
+        const name = p["Product Name"] || p.Name || "No Name";
         const price = p.Price || 0;
         const mrp = p.MRP || (Number(price) + 100);
 
         html += `
         <div class="bg-white p-2 rounded-2xl shadow-md flex flex-col border border-gray-100">
-          <img src="${img}" class="h-28 w-full object-cover rounded-xl" onerror="this.src='https://via.placeholder.com/150?text=Error'">
-          
+          <img src="${img}" class="h-28 w-full object-cover rounded-xl" onerror="this.src='https://via.placeholder.com/150?text=No+Image'">
           <div class="flex text-[#FFD700] text-[8px] mt-1">
               <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star-half-stroke"></i>
           </div>
-
           <h3 class="text-[11px] font-bold mt-1 truncate">${name}</h3>
-          
           <div class="flex gap-2 items-center">
               <p class="text-red-600 font-black text-sm">₹${price}</p>
               <p class="text-gray-400 line-through text-[10px]">₹${mrp}</p>
           </div>
-
           <div class="grid grid-cols-2 gap-1 mt-2">
-              <button onclick='addToCart(${JSON.stringify(p)})' class="bg-gray-100 text-black text-[10px] p-2 rounded-lg font-bold shadow-sm active:scale-95 transition-transform">+ Cart</button>
-              <button onclick='openQuickOrder(${JSON.stringify(p)})' class="bg-[#FFD700] text-black text-[10px] p-2 rounded-lg font-bold shadow-sm active:scale-95 transition-transform">BUY NOW</button>
+              <button onclick='addToCart(${JSON.stringify(p)})' class="bg-gray-100 text-black text-[10px] p-2 rounded-lg font-bold shadow-sm">+ Cart</button>
+              <button onclick='openQuickOrder(${JSON.stringify(p)})' class="bg-[#FFD700] text-black text-[10px] p-2 rounded-lg font-bold shadow-sm">BUY NOW</button>
           </div>
         </div>`;
     });
     document.getElementById("products").innerHTML = html;
 }
 
-// 🔥 SEARCH LOGIC
 function searchProduct() {
-    const v = document.getElementById("search").value.toLowerCase();
-    const filtered = allProducts.filter(p => {
-        const name = (p.Name || p["Product Name"] || "").toLowerCase();
-        return name.includes(v);
-    });
-    renderProducts(filtered);
+  const v = document.getElementById("search").value.toLowerCase();
+  const filtered = allProducts.filter(p => (p["Product Name"] || p.Name || "").toLowerCase().includes(v));
+  renderProducts(filtered);
 }
 
-// 🔥 CATEGORY FILTER
-function filterByCategory(category) {
-    const filtered = allProducts.filter(p => 
-        (p.Category || p["Category"] || "").toLowerCase() === category.toLowerCase()
-    );
-    renderProducts(filtered);
-    window.scrollTo({ top: 400, behavior: 'smooth' });
+function filterByCategory(cat) {
+  const filtered = allProducts.filter(p => (p.Category || "").toLowerCase() === cat.toLowerCase());
+  renderProducts(filtered);
 }
+
+function toggleCart() { document.getElementById("orderBox").classList.toggle("hidden"); }
 
 function addToCart(p) {
-    const pName = p.Name || p["Product Name"];
-    const found = cart.find(i => (i.Name || i["Product Name"]) === pName);
-    if(found){ found.qty += 1; } else { p.qty = 1; cart.push(p); }
-    updateCartUI();
+  const name = p["Product Name"] || p.Name;
+  const found = cart.find(i => (i["Product Name"] || i.Name) === name);
+  if(found){ found.qty += 1; } else { p.qty = 1; cart.push(p); }
+  updateCartUI();
 }
 
 function updateCartUI() {
-    document.getElementById("cartCount").innerText = cart.length;
+  document.getElementById("cartCount").innerText = cart.length;
+  let h = ""; let total = 0;
+  cart.forEach((item, index) => {
+      h += `<div class="flex justify-between text-sm">${item["Product Name"] || item.Name} x${item.qty} <span>₹${item.Price * item.qty}</span></div>`;
+      total += (item.Price * item.qty);
+  });
+  document.getElementById("cartItems").innerHTML = h;
+  document.getElementById("total").innerText = total;
 }
 
 function openQuickOrder(p) {
     currentQuickItem = p;
-    document.getElementById("selectedItemName").innerText = "Item: " + (p.Name || p["Product Name"]);
+    document.getElementById("selectedItemName").innerText = "Item: " + (p["Product Name"] || p.Name);
     document.getElementById("quickOrderBox").classList.remove("hidden");
 }
 
+function closeQuickOrder() { document.getElementById("quickOrderBox").classList.add("hidden"); }
+
 async function confirmQuickOrder() {
-    const name = document.getElementById("qName").value;
-    const mob = document.getElementById("qMobile").value;
-    const addr = document.getElementById("qAddress").value;
-    
-    if(!name || !mob || !addr) return alert("Fill all details!");
-    
     const data = {
-        "Timestamp": new Date().toISOString(),
-        "Customer Name": name,
-        "Mobile": mob,
-        "Address": addr,
-        "Products": (currentQuickItem.Name || currentQuickItem["Product Name"]) + " (Size: "+document.getElementById("qSize").value+", Color: "+document.getElementById("qColor").value+")",
-        "Total": currentQuickItem.Price || currentQuickItem["Price"],
+        "Customer Name": qName.value,
+        "Mobile": qMobile.value,
+        "Address": qAddress.value,
+        "Products": (currentQuickItem["Product Name"] || currentQuickItem.Name),
+        "Total": currentQuickItem.Price,
         "Status": "Pending"
     };
-    
+    await submitLogic(data);
+    closeQuickOrder();
+}
+
+async function submitLogic(data) {
     try {
         await db.collection("orders").add(data);
-        await fetch(SHEET_URL + "?action=placeOrder", {
-          method: "POST",
-          body: JSON.stringify(data)
-        });
+        await fetch(SHEET_URL + "?action=placeOrder", { method: "POST", body: JSON.stringify(data) });
         alert("Order Success ✅");
-        document.getElementById("quickOrderBox").classList.add("hidden");
     } catch(e) { alert("Error ❌"); }
 }
 
 loadProducts();
 </script>
 
-<!-- MODALS -->
-<div id="quickOrderBox" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
-        <h2 class="text-xl font-bold mb-2 text-red-600 border-b pb-2 italic uppercase">Quick Order</h2>
-        <p id="selectedItemName" class="font-bold text-gray-700 mb-4 bg-gray-100 p-2 rounded-lg text-sm text-left"></p>
-        
-        <div class="space-y-3 text-left">
-            <input id="qName" type="text" placeholder="Aapka Naam" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-red-500 text-black">
-            <input id="qMobile" type="tel" placeholder="Mobile Number" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-red-500 text-black">
-            <div class="grid grid-cols-2 gap-2">
-                <input id="qSize" type="text" placeholder="Size (L, XL)" class="p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-red-500 text-black">
-                <input id="qColor" type="text" placeholder="Color" class="p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-red-500 text-black">
-            </div>
-            <textarea id="qAddress" placeholder="Full Delivery Address" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none h-20 focus:border-red-500 text-black"></textarea>
-        </div>
-
-        <div class="flex gap-2 mt-6">
-            <button onclick="document.getElementById('quickOrderBox').classList.add('hidden')" class="flex-1 py-3 font-bold text-gray-400">CANCEL</button>
-            <button onclick="confirmQuickOrder()" class="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg border-b-4 border-green-800 active:translate-y-[2px]">CONFIRM ✅</button>
-        </div>
-    </div>
-</div>
-
 <footer class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-3 z-[100]">
-    <button onclick="window.location.reload()" class="flex flex-col items-center text-red-600 outline-none">
+    <button onclick="location.reload()" class="flex flex-col items-center text-red-600">
         <i class="fa-solid fa-house text-xl"></i>
         <span class="text-[10px] font-bold mt-1">HOME</span>
     </button>
-    <button onclick="document.getElementById('products').scrollIntoView({behavior: 'smooth'})" class="flex flex-col items-center text-gray-500 outline-none">
+    <button onclick="document.getElementById('products').scrollIntoView()" class="flex flex-col items-center text-gray-500">
         <i class="fa-solid fa-layer-group text-xl"></i>
         <span class="text-[10px] font-bold mt-1">CATEGORIES</span>
     </button>
-    <button onclick="alert('Jaldi hi chalu hoga!')" class="flex flex-col items-center text-gray-500 outline-none">
+    <button onclick="alert('Orders track feature coming soon!')" class="flex flex-col items-center text-gray-500">
         <i class="fa-solid fa-truck-fast text-xl"></i>
         <span class="text-[10px] font-bold mt-1">ORDERS</span>
     </button>
-    <button onclick="alert('Account settings abhi kaam nahi kar rahi!')" class="flex flex-col items-center text-gray-500 outline-none">
+    <button onclick="alert('Profile section coming soon!')" class="flex flex-col items-center text-gray-500">
         <i class="fa-solid fa-user text-xl"></i>
         <span class="text-[10px] font-bold mt-1">ACCOUNT</span>
     </button>
