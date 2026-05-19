@@ -59,6 +59,12 @@ img { background:#eee; min-height: 100px; }
 </div>
 
 <div class="flex gap-4 overflow-x-auto no-scrollbar p-4 bg-white">
+    <div onclick="renderProducts(allProducts)" class="flex flex-col items-center min-w-[70px] cursor-pointer">
+        <div class="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center border-2 border-blue-500 shadow-sm">
+            <i class="fa-solid fa-border-all text-blue-600 text-xl"></i>
+        </div>
+        <span class="text-[11px] font-bold mt-1 text-blue-600">All</span>
+    </div>
     <div onclick="filterByCategory('Saree')" class="flex flex-col items-center min-w-[70px] cursor-pointer">
         <div class="w-16 h-16 rounded-full overflow-hidden border-2 border-gray-100 shadow-sm">
             <img src="https://m.media-amazon.com/images/I/71z3uD+6clL._AC_UY1100_.jpg" class="w-full h-full object-cover">
@@ -101,7 +107,7 @@ img { background:#eee; min-height: 100px; }
         </div>
         <div class="flex gap-2 mt-6">
             <button onclick="document.getElementById('orderBox').classList.add('hidden')" class="flex-1 py-3 font-bold text-gray-500">Close</button>
-            <button onclick="submitOrder()" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg">Place Order</button>
+            <button id="cartSubmitBtn" onclick="submitOrder()" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg">Place Order</button>
         </div>
     </div>
 </div>
@@ -121,7 +127,7 @@ img { background:#eee; min-height: 100px; }
         </div>
         <div class="flex gap-2 mt-6">
             <button onclick="closeQuickOrder()" class="flex-1 py-3 font-bold text-gray-400">CANCEL</button>
-            <button onclick="confirmQuickOrder()" class="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg border-b-4 border-green-800">CONFIRM ✅</button>
+            <button id="quickSubmitBtn" onclick="confirmQuickOrder()" class="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg border-b-4 border-green-800">CONFIRM ✅</button>
         </div>
     </div>
 </div>
@@ -143,7 +149,7 @@ let allProducts = [];
 let cart = [];  
 let currentQuickItem = null;  
 
-// 🔥 FIXED: Data Merge Layer & Object Structure Mapping
+// Data Merge Layer & Object Structure Mapping
 async function loadProducts() {  
   const container = document.getElementById("products");
   container.innerHTML = "<p class='text-center w-full col-span-2 py-10 text-gray-500 font-bold'>Loading Products...</p>";
@@ -167,7 +173,6 @@ async function loadProducts() {
         sheetResponse.data.forEach(item => { 
             const barcode = item.Barcode || item.barcode;
             if(barcode) {
-                // Merge strategies: Sheet data overrides or updates firebase base
                 combinedData[barcode] = Object.assign({}, combinedData[barcode] || {}, item); 
             }
         });
@@ -187,17 +192,21 @@ async function loadProducts() {
   }  
 }
 
-// FIXED: String escaping issues in onclick arguments
+// String escaping issues fixed
 function renderProducts(list) {  
     let html = "";   
     const container = document.getElementById("products");  
     
+    if(list.length === 0) {
+        container.innerHTML = "<p class='text-center w-full col-span-2 py-10 text-gray-400'>Product nahi mila!</p>";
+        return;
+    }
+
     list.forEach((p, idx) => {  
         const imgUrl = p["Image URL"] || p.Image || p.image || 'https://via.placeholder.com/150';  
         const pName = p.Name || p["Product Name"] || "No Name";  
         const price = p.Price || 0;  
         const mrp = p.MRP || (Number(price) + 150);  
-        const barcode = p.Barcode || p.barcode || "";
 
         html += `  
         <div class="bg-white p-2 rounded-2xl shadow-md flex flex-col border border-gray-100">  
@@ -219,18 +228,24 @@ function renderProducts(list) {
     container.innerHTML = html;  
 }  
 
-// Global helpers to avoid dynamic inline stringify breaking syntax
 window.handleAddToCart = function(idx) { addToCart(allProducts[idx]); };
 window.handleQuickOrder = function(idx) { openQuickOrder(allProducts[idx]); };
   
+// FIXED: Undefined string check to prevent crashes during search
 function searchProduct() {  
   const v = document.getElementById("search").value.toLowerCase();  
-  const filtered = allProducts.filter(p => (p.Name || p["Product Name"] || "").toLowerCase().includes(v));  
+  const filtered = allProducts.filter(p => {
+      const name = p.Name || p["Product Name"] || "";
+      return String(name).toLowerCase().includes(v);
+  });  
   renderProducts(filtered);  
 }  
   
 function filterByCategory(cat) {  
-  const filtered = allProducts.filter(p => (p.Category || p.category || "").toLowerCase() === cat.toLowerCase());  
+  const filtered = allProducts.filter(p => {
+      const category = p.Category || p.category || "";
+      return String(category).toLowerCase() === cat.toLowerCase();
+  });  
   renderProducts(filtered);  
 }  
   
@@ -263,12 +278,25 @@ function openQuickOrder(p) {
   
 function closeQuickOrder() { document.getElementById("quickOrderBox").classList.add("hidden"); }  
   
+// FIXED: Added multi-click disable security layer
 async function confirmQuickOrder() {  
+    const btn = document.getElementById("quickSubmitBtn");
+    const nameVal = document.getElementById("qName").value.trim();
+    const mobileVal = document.getElementById("qMobile").value.trim();
+    const addressVal = document.getElementById("qAddress").value.trim();
+
+    if(!nameVal || !mobileVal || !addressVal) {
+        return alert("Kripya poori detail bharein!");
+    }
+
+    btn.disabled = true;
+    btn.innerText = "PROCESSING...";
+
     const barcodeVal = currentQuickItem.Barcode || currentQuickItem.barcode || "";
     const data = {  
-        "Customer Name": document.getElementById("qName").value,  
-        "Mobile": document.getElementById("qMobile").value,  
-        "Address": document.getElementById("qAddress").value,  
+        "Customer Name": nameVal,  
+        "Mobile": mobileVal,  
+        "Address": addressVal,  
         "Products": (currentQuickItem.Name || currentQuickItem["Product Name"]),  
         "Total": currentQuickItem.Price,  
         "Barcode": barcodeVal,
@@ -277,16 +305,55 @@ async function confirmQuickOrder() {
         "Status": "Pending"  
     };  
     await submitLogic(data);  
+    btn.disabled = false;
+    btn.innerText = "CONFIRM ✅";
     closeQuickOrder();  
 }  
+
+// 🔥 FIXED: Added the missing Main Cart submitOrder function
+async function submitOrder() {
+    const btn = document.getElementById("cartSubmitBtn");
+    const nameVal = document.getElementById("cName").value.trim();
+    const mobileVal = document.getElementById("mobile").value.trim();
+    const addressVal = document.getElementById("address").value.trim();
+
+    if (cart.length === 0) return alert("Aapka cart khali hai!");
+    if (!nameVal || !mobileVal || !addressVal) {
+        return alert("Kripya poori detail bharein!");
+    }
+
+    btn.disabled = true;
+    btn.innerText = "PROCESSING...";
+
+    const productNames = cart.map(item => `${item.Name || item["Product Name"]} (x${item.qty})`).join(", ");
+    const totalPrice = cart.reduce((sum, item) => sum + (item.Price * item.qty), 0);
+    const firstBarcode = cart[0].Barcode || cart[0].barcode || "";
+
+    const data = {  
+        "Customer Name": nameVal,  
+        "Mobile": mobileVal,  
+        "Address": addressVal,  
+        "Products": productNames,  
+        "Total": totalPrice,  
+        "Barcode": firstBarcode,
+        "Status": "Pending"  
+    };  
+
+    await submitLogic(data);  
+    btn.disabled = false;
+    btn.innerText = "Place Order";
+    cart = []; 
+    updateCartUI();
+    document.getElementById("orderBox").classList.add("hidden");
+}
   
-// FIXED: CORS handle and Redirect support for Google Scripts POST
+// FIXED: CORS handling and background stock calculation fixes
 async function submitLogic(data) {  
     try {  
         // 1. Save Order to Firebase
         await db.collection("orders").add(data);  
         
-        // 2. Save Order to Sheet (Fixed using Text encoding workaround for standard web apps)
+        // 2. Save Order to Sheet
         await fetch(SHEET_URL, { 
             method: "POST",
             mode: "no-cors",
@@ -304,6 +371,7 @@ async function submitLogic(data) {
             fbSnap.forEach(doc => {
                 let currentStock = parseInt(doc.data().Stock || doc.data().stock) || 1;
                 let newStock = currentStock - 1;
+                if(newStock < 0) newStock = 0;
                 doc.ref.update({ Stock: newStock });
             });
         }
@@ -312,11 +380,20 @@ async function submitLogic(data) {
         loadProducts(); 
     } catch(e) { 
         console.error(e);
-        alert("Error ❌"); 
+        alert("Error ❌ Code Check Karein"); 
     }  
 }  
   
 loadProducts();  
+
+// FIXED: PWA Registration Script Added
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(reg => console.log('Service Worker Active!'))
+      .catch(err => console.log('Service Worker Error', err));
+  });
+}
 </script>
 
 <footer class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-3 z-[100]">  
