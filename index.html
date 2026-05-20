@@ -290,7 +290,7 @@ async function confirmQuickOrder() {
     btn.innerText = "PROCESSING...";
 
     const barcodeVal = currentQuickItem.Barcode || currentQuickItem.barcode || "";
-    const pName = currentQuickItem["Product Name"] || currentQuickItem["ProductName"] || currentQuickItem.productname || currentQuickItem.Name || currentQuickItem.name;
+    const pName = currentQuickItem["Product Name"] || currentQuickItem["ProductName"] || currentQuickItem.Name || currentQuickItem.name || "";
     const priceVal = currentQuickItem.Price || currentQuickItem.price || 0;
     const catVal = currentQuickItem.Category || currentQuickItem.category || "";
     const descVal = currentQuickItem.Description || currentQuickItem.description || "";
@@ -301,10 +301,10 @@ async function confirmQuickOrder() {
         "Address": addressVal,  
         "Products": pName,  
         "Total": priceVal,  
-        "Barcode": barcodeVal,
+        "BarcodeID": barcodeVal, // 🔥 Fixed as per sheet
         "Price": priceVal,
-        "Size": document.getElementById("qSize").value.trim() || currentQuickItem.Size || currentQuickItem.size || "",
-        "Color": document.getElementById("qColor").value.trim() || currentQuickItem.Color || currentQuickItem.color || "",
+        "Size": document.getElementById("qSize").value.trim() || currentQuickItem.Size || "",
+        "Color": document.getElementById("qColor").value.trim() || currentQuickItem.Color || "",
         "Category": catVal,
         "Description": descVal,
         "Stock": "1",
@@ -315,6 +315,7 @@ async function confirmQuickOrder() {
     btn.innerText = "CONFIRM ✅";
     closeQuickOrder();  
 }  
+
 
 // 🔥 FIXED CART ORDER MAPPING (Saare missing columns jod diye hain)
 async function submitOrder() {
@@ -332,15 +333,11 @@ async function submitOrder() {
     btn.innerText = "PROCESSING...";
 
     const productNames = cart.map(item => {
-        const name = item["Product Name"] || item["ProductName"] || item.productname || item.Name || item.name;
+        const name = item["Product Name"] || item["ProductName"] || item.Name || item.name || "";
         return `${name} (x${item.qty})`;
     }).join(", ");
     
-    const totalPrice = cart.reduce((sum, item) => {
-        const price = item.Price || item.price || 0;
-        return sum + (price * item.qty);
-    }, 0);
-    
+    const totalPrice = cart.reduce((sum, item) => sum + ((item.Price || item.price || 0) * item.qty), 0);
     const firstBarcode = cart[0].Barcode || cart[0].barcode || "";
     const firstPrice = cart[0].Price || cart[0].price || 0;
     const firstSize = cart[0].Size || cart[0].size || "";
@@ -355,7 +352,7 @@ async function submitOrder() {
         "Address": addressVal,  
         "Products": productNames,  
         "Total": totalPrice,  
-        "Barcode": firstBarcode,
+        "BarcodeID": firstBarcode, // 🔥 Fixed as per sheet
         "Price": firstPrice,
         "Size": firstSize,
         "Color": firstColor,
@@ -372,6 +369,7 @@ async function submitOrder() {
     updateCartUI();
     document.getElementById("orderBox").classList.add("hidden");
 }
+
   
 async function submitLogic(data) {  
     try {  
