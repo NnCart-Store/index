@@ -149,7 +149,6 @@ let allProducts = [];
 let cart = [];  
 let currentQuickItem = null;  
 
-// Data Merge Layer & Object Structure Mapping
 async function loadProducts() {  
   const container = document.getElementById("products");
   container.innerHTML = "<p class='text-center w-full col-span-2 py-10 text-gray-500 font-bold'>Loading Products...</p>";
@@ -162,13 +161,11 @@ async function loadProducts() {
         db.collection("products").get().then(snap => snap.docs.map(doc => doc.data())).catch(e => { console.log("Firebase fetch error:", e); return []; })
     ]);
 
-    // 1. Firebase items register karein
     firebaseItems.forEach(item => {
         const barcode = item.Barcode || item.barcode;
         if(barcode) { combinedData[barcode] = item; }
     });
 
-    // 2. Sheet Items extract from sheetResponse.data
     if (sheetResponse && sheetResponse.status === "success" && Array.isArray(sheetResponse.data)) {
         sheetResponse.data.forEach(item => { 
             const barcode = item.Barcode || item.barcode;
@@ -192,7 +189,6 @@ async function loadProducts() {
   }  
 }
 
-// 🔥 FIXED: Columns mapping dynamically parsed to prevent blank images/no-name bugs
 function renderProducts(list) {  
     let html = "";   
     const container = document.getElementById("products");  
@@ -203,9 +199,7 @@ function renderProducts(list) {
     }
 
     list.forEach((p, idx) => {  
-        // Column D mapping fix
         const imgUrl = p["Image URL"] || p["ImageUrl"] || p.imageurl || p.Image || p.image || 'https://via.placeholder.com/150';  
-        // Column C mapping fix
         const pName = p["Product Name"] || p["ProductName"] || p.productname || p.Name || p.name || "No Name";  
         const price = p.Price || p.price || 0;  
         const mrp = p.MRP || p.mrp || (Number(price) + 150);  
@@ -233,7 +227,6 @@ function renderProducts(list) {
 window.handleAddToCart = function(idx) { addToCart(allProducts[idx]); };
 window.handleQuickOrder = function(idx) { openQuickOrder(allProducts[idx]); };
   
-// FIXED: Safe dynamic string parse
 function searchProduct() {  
   const v = document.getElementById("search").value.toLowerCase();  
   const filtered = allProducts.filter(p => {
@@ -243,7 +236,6 @@ function searchProduct() {
   renderProducts(filtered);  
 }  
   
-// FIXED: Multi-key object category checks
 function filterByCategory(cat) {  
   const filtered = allProducts.filter(p => {
       const category = p.Category || p.category || "";
@@ -283,6 +275,7 @@ function openQuickOrder(p) {
   
 function closeQuickOrder() { document.getElementById("quickOrderBox").classList.add("hidden"); }  
   
+// 🔥 FIXED QUICK ORDER MAPPING (Saare columns bharega)
 async function confirmQuickOrder() {  
     const btn = document.getElementById("quickSubmitBtn");
     const nameVal = document.getElementById("qName").value.trim();
@@ -299,6 +292,8 @@ async function confirmQuickOrder() {
     const barcodeVal = currentQuickItem.Barcode || currentQuickItem.barcode || "";
     const pName = currentQuickItem["Product Name"] || currentQuickItem["ProductName"] || currentQuickItem.productname || currentQuickItem.Name || currentQuickItem.name;
     const priceVal = currentQuickItem.Price || currentQuickItem.price || 0;
+    const catVal = currentQuickItem.Category || currentQuickItem.category || "";
+    const descVal = currentQuickItem.Description || currentQuickItem.description || "";
 
     const data = {  
         "Customer Name": nameVal,  
@@ -307,8 +302,12 @@ async function confirmQuickOrder() {
         "Products": pName,  
         "Total": priceVal,  
         "Barcode": barcodeVal,
-        "Size": document.getElementById("qSize").value,
-        "Color": document.getElementById("qColor").value,
+        "Price": priceVal,
+        "Size": document.getElementById("qSize").value.trim() || currentQuickItem.Size || currentQuickItem.size || "",
+        "Color": document.getElementById("qColor").value.trim() || currentQuickItem.Color || currentQuickItem.color || "",
+        "Category": catVal,
+        "Description": descVal,
+        "Stock": "1",
         "Status": "Pending"  
     };  
     await submitLogic(data);  
@@ -317,6 +316,7 @@ async function confirmQuickOrder() {
     closeQuickOrder();  
 }  
 
+// 🔥 FIXED CART ORDER MAPPING (Saare missing columns jod diye hain)
 async function submitOrder() {
     const btn = document.getElementById("cartSubmitBtn");
     const nameVal = document.getElementById("cName").value.trim();
@@ -342,6 +342,12 @@ async function submitOrder() {
     }, 0);
     
     const firstBarcode = cart[0].Barcode || cart[0].barcode || "";
+    const firstPrice = cart[0].Price || cart[0].price || 0;
+    const firstSize = cart[0].Size || cart[0].size || "";
+    const firstColor = cart[0].Color || cart[0].color || "";
+    const firstCategory = cart[0].Category || cart[0].category || "";
+    const firstDesc = cart[0].Description || cart[0].description || "";
+    const totalQty = cart.reduce((sum, item) => sum + (item.qty || 1), 0);
 
     const data = {  
         "Customer Name": nameVal,  
@@ -350,6 +356,12 @@ async function submitOrder() {
         "Products": productNames,  
         "Total": totalPrice,  
         "Barcode": firstBarcode,
+        "Price": firstPrice,
+        "Size": firstSize,
+        "Color": firstColor,
+        "Category": firstCategory,
+        "Description": firstDesc,
+        "Stock": String(totalQty),
         "Status": "Pending"  
     };  
 
