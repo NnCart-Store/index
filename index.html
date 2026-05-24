@@ -189,42 +189,100 @@ async function loadProducts() {
   }  
 }
 
-function renderProducts(list) {  
-    let html = "";   
-    const container = document.getElementById("products");  
-    
-    if(list.length === 0) {
-        container.innerHTML = "<p class='text-center w-full col-span-2 py-10 text-gray-400'>Product nahi mila!</p>";
+function renderProducts(list) {
+
+    const container = document.getElementById("products");
+
+    if (!container) {
+        console.error("Products container nahi mila");
         return;
     }
 
-    list.forEach((p, idx) => {  
-        // 🔥 DIRECT FIX: ImgBB link aur Sheet data ko har condition me read karne ke liye
-        const imgUrl = p.imageurl || p["Image URL"] || p["ImageUrl"] || p.Image || p.image || 'https://via.placeholder.com/150';  
-        const pName = p.productname || p["Product Name"] || p["ProductName"] || p.Name || p.name || "No Name";  
-        const price = p.price || p.Price || 0;  
-        const mrp = p.mrp || p.MRP || (Number(price) + 150);  
+    if (!Array.isArray(list) || list.length === 0) {
+        container.innerHTML = `
+        <p class='text-center w-full col-span-2 py-10 text-gray-400'>
+            Product nahi mila!
+        </p>`;
+        return;
+    }
 
-        html += `  
-        <div class="bg-white p-2 rounded-2xl shadow-md flex flex-col border border-gray-100">  
-            <img src="${imgUrl}" class="h-28 w-full object-cover rounded-xl" onerror="this.src='https://via.placeholder.com/150?text=No+Image'">  
-            <div class="flex text-[#FFD700] text-[8px] mt-1">  
-                <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star-half-stroke"></i>  
-            </div>  
-            <h3 class="text-[11px] font-bold mt-1 truncate">${pName}</h3>  
-            <div class="flex gap-2 items-center">  
-                <p class="text-red-600 font-black text-sm">₹${price}</p>  
-                <p class="text-gray-400 line-through text-[10px]">₹${mrp}</p>  
-            </div>  
-            <div class="grid grid-cols-2 gap-1 mt-2">  
-                <button onclick="handleAddToCart(${idx})" class="bg-gray-100 text-black text-[10px] p-2 rounded-lg font-bold shadow-sm">+ Cart</button>  
-                <button onclick="handleQuickOrder(${idx})" class="bg-[#FFD700] text-black text-[10px] p-2 rounded-lg font-bold shadow-sm">BUY NOW</button>  
-            </div>  
-        </div>`;  
-    });  
-    container.innerHTML = html;  
+    let html = "";
+
+    list.forEach((p, idx) => {
+
+        const imgUrl =
+            p.imageurl ||
+            p["Image URL"] ||
+            p["ImageUrl"] ||
+            p.Image ||
+            p.image ||
+            "https://via.placeholder.com/150";
+
+        const pName =
+            p.productname ||
+            p["Product Name"] ||
+            p["ProductName"] ||
+            p.Name ||
+            p.name ||
+            "No Name";
+
+        const price = Number(p.price || p.Price || 0);
+
+        const mrp = Number(
+            p.mrp ||
+            p.MRP ||
+            (price + 150)
+        );
+
+        html += `
+        <div class="bg-white p-2 rounded-2xl shadow-md flex flex-col border border-gray-100">
+
+            <img
+                src="${imgUrl}"
+                class="h-28 w-full object-cover rounded-xl"
+                onerror="this.src='https://via.placeholder.com/150?text=No+Image'"
+            >
+
+            <div class="flex text-[#FFD700] text-[8px] mt-1">
+                <i class="fa-solid fa-star"></i>
+                <i class="fa-solid fa-star"></i>
+                <i class="fa-solid fa-star"></i>
+                <i class="fa-solid fa-star"></i>
+                <i class="fa-solid fa-star-half-stroke"></i>
+            </div>
+
+            <h3 class="text-[11px] font-bold mt-1 truncate">
+                ${pName}
+            </h3>
+
+            <div class="flex gap-2 items-center">
+                <p class="text-red-600 font-black text-sm">₹${price}</p>
+                <p class="text-gray-400 line-through text-[10px]">₹${mrp}</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-1 mt-2">
+
+                <button
+                    onclick="handleAddToCart(${idx})"
+                    class="bg-gray-100 text-black text-[10px] p-2 rounded-lg font-bold shadow-sm"
+                >
+                    + Cart
+                </button>
+
+                <button
+                    onclick="handleQuickOrder(${idx})"
+                    class="bg-[#FFD700] text-black text-[10px] p-2 rounded-lg font-bold shadow-sm"
+                >
+                    BUY NOW
+                </button>
+
+            </div>
+
+        </div>`;
+    });
+
+    container.innerHTML = html;
 }
-
 
 
 
