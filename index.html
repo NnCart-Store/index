@@ -189,40 +189,66 @@ async function loadProducts() {
   }  
 }
 
-function renderProducts(list) {  
-    let html = "";   
-    const container = document.getElementById("products");  
-    
-    if(list.length === 0) {
-        container.innerHTML = "<p class='text-center w-full col-span-2 py-10 text-gray-400'>Product nahi mila!</p>";
-        return;
-    }
+// 🔥 UPDATED RENDER ENGINE: Includes Automatic "SOLD OUT" Handling
+function renderProducts(productsList) {
+    const container = document.getElementById("products");
+    container.innerHTML = ""; 
 
-    list.forEach((p, idx) => {  
-        const imgUrl = p["Image URL"] || p["ImageUrl"] || p.imageurl || p.Image || p.image || 'https://via.placeholder.com/150';  
-        const pName = p["Product Name"] || p["ProductName"] || p.productname || p.Name || p.name || "No Name";  
-        const price = p.Price || p.price || 0;  
-        const mrp = p.MRP || p.mrp || (Number(price) + 150);  
+    productsList.forEach(item => {
+        // Standard lowercase keys read kar rahe hain
+        const productName = item.name || "No Name";
+        const currentPrice = item.price || 0;
+        const mrpPrice = item.mrp || Math.round(currentPrice * 1.3);
+        const imageUrl = item.image || "https://via.placeholder.com/150";
+        const itemBarcode = item.barcode || "";
+        
+        // 🔥 STOCK CHECK: Number me convert karke check kar rahe hain
+        const currentStock = Number(item.stock) || 0;
+        const isSoldOut = currentStock <= 0;
 
-        html += `  
-        <div class="bg-white p-2 rounded-2xl shadow-md flex flex-col border border-gray-100">  
-            <img src="${imgUrl}" class="h-28 w-full object-cover rounded-xl" onerror="this.src='https://via.placeholder.com/150?text=No+Image'">  
-            <div class="flex text-[#FFD700] text-[8px] mt-1">  
-                <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star-half-stroke"></i>  
-            </div>  
-            <h3 class="text-[11px] font-bold mt-1 truncate">${pName}</h3>  
-            <div class="flex gap-2 items-center">  
-                <p class="text-red-600 font-black text-sm">₹${price}</p>  
-                <p class="text-gray-400 line-through text-[10px]">₹${mrp}</p>  
-            </div>  
-            <div class="grid grid-cols-2 gap-1 mt-2">  
-                <button onclick="handleAddToCart(${idx})" class="bg-gray-100 text-black text-[10px] p-2 rounded-lg font-bold shadow-sm">+ Cart</button>  
-                <button onclick="handleQuickOrder(${idx})" class="bg-[#FFD700] text-black text-[10px] p-2 rounded-lg font-bold shadow-sm">BUY NOW</button>  
-            </div>  
-        </div>`;  
-    });  
-    container.innerHTML = html;  
-}  
+        // Sold out badge aur button states taiyar karna
+        const soldOutBadge = isSoldOut ? `<span class="absolute top-2 right-2 bg-red-600 text-white text-xs font-extrabold px-2.5 py-1 rounded-full shadow-md z-10 animate-pulse">SOLD OUT</span>` : '';
+        const disabledAttr = isSoldOut ? 'disabled' : '';
+        const buyBtnClass = isSoldOut 
+            ? 'bg-gray-300 text-gray-500 cursor-not-allowed font-extrabold py-2 px-1 text-xs rounded-lg' 
+            : 'bg-yellow-400 text-gray-900 font-extrabold py-2 px-1 text-xs rounded-lg hover:bg-yellow-500 transition shadow-sm';
+        const cartBtnClass = isSoldOut 
+            ? 'bg-gray-100 text-gray-400 cursor-not-allowed font-bold py-2 px-1 text-xs rounded-lg' 
+            : 'bg-gray-100 text-gray-800 font-bold py-2 px-1 text-xs rounded-lg hover:bg-gray-200 transition';
+        const buyBtnText = isSoldOut ? 'OUT OF STOCK' : 'BUY NOW';
+
+        const cardHtml = `
+            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between relative">
+                <!-- Sold Out ka Lal Badge upar dikhane ke liye -->
+                ${soldOutBadge}
+                
+                <div>
+                    <div class="relative w-full pt-[100%] rounded-lg overflow-hidden bg-gray-50 ${isSoldOut ? 'opacity-60' : ''}">
+                        <img src="${imageUrl}" alt="${productName}" class="absolute top-0 left-0 w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/150'">
+                    </div>
+                    <div class="flex items-center mt-2 text-amber-500 text-xs">
+                        ⭐⭐⭐⭐⭐ <span class="text-gray-400 ml-1">(5)</span>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-sm mt-1 line-clamp-2 ${isSoldOut ? 'text-gray-400 line-through' : ''}">${productName}</h3>
+                </div>
+                
+                <div class="mt-2">
+                    <div class="flex items-baseline gap-1">
+                        <span class="${isSoldOut ? 'text-gray-400' : 'text-red-600'} font-extrabold text-base">₹${currentPrice}</span>
+                        <span class="text-gray-400 line-through text-xs">₹${mrpPrice}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-1 mt-3">
+                        <!-- Buttons automatic disable ho jayenge jab stock 0 hoga -->
+                        <button onclick="addToCart(this)" data-barcode="${itemBarcode}" ${disabledAttr} class="${cartBtnClass}">+ Cart</button>
+                        <button onclick="quickOrder(this)" data-barcode="${itemBarcode}" ${disabledAttr} class="${buyBtnClass}">${buyBtnText}</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.innerHTML += cardHtml;
+    });
+}
+
 
 window.handleAddToCart = function(idx) { addToCart(allProducts[idx]); };
 window.handleQuickOrder = function(idx) { openQuickOrder(allProducts[idx]); };
