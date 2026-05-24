@@ -194,26 +194,37 @@ function renderProducts(productsList) {
     container.innerHTML = ""; 
 
     productsList.forEach(item => {
-        // Purane aur naye dono format ki keys ko handle karne ke liye safe checks:
+        // 🔍 DEBUGGING LINE: Browser Console (F12) me dikhega ki exact keys kya aa rahi hain
+        console.log("Product Item Data:", item);
+
+        // Standard checks for name, price, and image
         const productName = item.name || item.ProductName || item["Product Name"] || "No Name";
-        const currentPrice = item.price || item.Price || 0;
-        const mrpPrice = item.mrp || item.MRP || Math.round(currentPrice * 1.3);
+        const currentPrice = Number(item.price || item.Price || 0);
+        const mrpPrice = Number(item.mrp || item.MRP || Math.round(currentPrice * 1.3));
         const imageUrl = item.image || item.ImageUrl || item["Image URL"] || "https://via.placeholder.com/150";
         const itemBarcode = item.barcode || item.Barcode || "";
         
-        // 🔥 STOCK FIX: Agar Google Sheet se 'Stock' (Capital) aaye ya Firebase se 'stock' (Small), dono chalenge!
-        let rawStock = 0;
-        if (item.Stock !== undefined && item.Stock !== null && item.Stock !== "") {
-            rawStock = item.Stock;
-        } else if (item.stock !== undefined && item.stock !== null && item.stock !== "") {
-            rawStock = item.stock;
+        // 🔥 ULTIMATE STOCK FIX: Har tarah ke format (String, Object, Empty) se bachne ke liye tight check
+        let finalStock = 10; // Default backup stock taaki product sold out na dikhe
+
+        // 1. Agar item ke paas 'Stock' ya 'stock' key hai
+        let detectedStock = item.Stock !== undefined ? item.Stock : item.stock;
+
+        // 2. Agar stock mila hai aur woh khali string nahi hai, toh check karein
+        if (detectedStock !== undefined && detectedStock !== null && detectedStock !== "") {
+            finalStock = Number(detectedStock);
+            
+            // Agar number convert karne par NaN (Not a Number) ho jaye, toh use 10 maan lo
+            if (isNaN(finalStock)) {
+                finalStock = 10;
+            }
         } else {
-            // Agar kisi product me stock ka column hi khali hai, toh safe side ke liye 10 stock de dete hain
-            rawStock = 10; 
+            // Agar Google Sheet me pure 10 columns me se stock column khali chhoda hua hai
+            finalStock = 10; 
         }
 
-        const currentStock = Number(rawStock);
-        const isSoldOut = currentStock <= 0;
+        // Ab decide hoga ki sold out dikhana hai ya nahi
+        const isSoldOut = finalStock <= 0;
 
         // Sold out badge aur button styles
         const soldOutBadge = isSoldOut ? `<span class="absolute top-2 right-2 bg-red-600 text-white text-xs font-extrabold px-2.5 py-1 rounded-full shadow-md z-10 animate-pulse">SOLD OUT</span>` : '';
