@@ -137,7 +137,7 @@ img { background:#eee; min-height: 100px; }
 
 <script>
 const firebaseConfig = {  
-  apiKey: "YOUR_API_KEY",  
+  apiKey: "YOUR_API_KEY",  // ⚠️ YAHA APNI ASLI API KEY DAALNA MAT BHOOLNA BHAI!
   authDomain: "nncart.firebaseapp.com",  
   projectId: "nncart"  
 };  
@@ -149,33 +149,14 @@ let allProducts = [];
 let cart = [];  
 let currentQuickItem = null;  
 
+// 🚀 FIXED: Ab products data direct Firebase Firestore se aayega, sheet se nahi
 async function loadProducts() {  
   const container = document.getElementById("products");
   container.innerHTML = "<p class='text-center w-full col-span-2 py-10 text-gray-500 font-bold'>Loading Products...</p>";
 
   try {  
-    let combinedData = {}; 
-
-    const [sheetResponse, firebaseItems] = await Promise.all([
-        fetch(SHEET_URL + "?action=getInventory").then(res => res.json()).catch(e => { console.log("Sheet fetch error:", e); return null; }),
-        db.collection("products").get().then(snap => snap.docs.map(doc => doc.data())).catch(e => { console.log("Firebase fetch error:", e); return []; })
-    ]);
-
-    firebaseItems.forEach(item => {
-        const barcode = item.Barcode || item.barcode;
-        if(barcode) { combinedData[barcode] = item; }
-    });
-
-    if (sheetResponse && sheetResponse.status === "success" && Array.isArray(sheetResponse.data)) {
-        sheetResponse.data.forEach(item => { 
-            const barcode = item.Barcode || item.barcode;
-            if(barcode) {
-                combinedData[barcode] = Object.assign({}, combinedData[barcode] || {}, item); 
-            }
-        });
-    }
-
-    allProducts = Object.values(combinedData);
+    const snap = await db.collection("products").get();
+    allProducts = snap.docs.map(doc => doc.data());
 
     if (allProducts.length > 0) {
         renderProducts(allProducts);
@@ -189,6 +170,7 @@ async function loadProducts() {
   }  
 }
 
+// 🛍️ FIXED: Cart orders ka data automatic stock minus karke B2C Google Sheet par bhejega
 async function submitOrder() {
     const btn = document.getElementById("cartSubmitBtn");
     const nameVal = document.getElementById("cName").value.trim();
@@ -203,7 +185,6 @@ async function submitOrder() {
     btn.disabled = true;
     btn.innerText = "PROCESSING...";
 
-    // 1. Details nikalna (Aapke purane logic ke mutabik keys fix ki hain)
     const productNames = cart.map(item => {
         const pName = item.name || item.ProductName || item["Product Name"] || "No Name";
         return `${pName} (x${item.qty})`;
@@ -220,9 +201,8 @@ async function submitOrder() {
     const firstColor = cart[0].color || cart[0].Color || "";
     const firstCategory = cart[0].category || cart[0].Category || "";
 
-    // 🔥 Galti 1 Fix: Google Apps Script ke liye Query Parameters taiyar karna
-    // Isse sheet ke "order" tab me data sahi columns me jayega
-    const urlParams = `?action=addOrder` // Aapka order save karne ka action name
+    // Google Apps Script URL string parameters 
+    const urlParams = `?action=addOrder`
         + `&CustomerName=${encodeURIComponent(nameVal)}`
         + `&Mobile=${encodeURIComponent(mobileVal)}`
         + `&Address=${encodeURIComponent(addressVal)}`
@@ -236,40 +216,34 @@ async function submitOrder() {
         + `&Status=Pending`;
 
     try {
-        // 🔥 Galti 2 Fix: Sabse pehle Firebase se automatic stock minus (-) karo
-        const batch = db.batch(); // Firebase Transaction Batch
-        
+        // Firebase Batch Stock update
+        const batch = db.batch(); 
         cart.forEach(item => {
             const itemBarcode = item.barcode || item.Barcode;
             if (itemBarcode) {
                 const productRef = db.collection("products").doc(itemBarcode);
-                // Firebase automatic stock me se quantity kam kar dega
                 batch.update(productRef, {
                     stock: firebase.firestore.FieldValue.increment(-Number(item.qty))
                 });
             }
         });
-        
-        // Firebase me stock update lock karo
         await batch.commit();
-        console.log("Firebase Stock Deducted Successfully! ✅");
+        console.log("Firebase Stock Deducted! ✅");
 
-        // 3. Ab Google Sheet me order bhej do
-        // (Aapke SHEET_URL me params jod kar fetch chala rahe hain)
+        // Google Sheet update triggers
         const sheetResponse = await fetch(SHEET_URL + urlParams);
-        const resultText = await sheetResponse.text();
+        await sheetResponse.text();
 
         alert("🛍️ Order successfully place ho gaya aur Stock automatic kam ho gaya!");
         
-        // 4. Cart aur UI reset karein
         cart = []; 
         updateCartUI();
         document.getElementById("orderBox").classList.add('hidden');
         
-        // Form clear karein
         document.getElementById("cName").value = "";
         document.getElementById("mobile").value = "";
         document.getElementById("address").value = "";
+        loadProducts();
 
     } catch (error) {
         console.error("Order submission failed:", error);
@@ -279,8 +253,6 @@ async function submitOrder() {
         btn.innerText = "Place Order";
     }
 }
-
-
 
 window.handleAddToCart = function(idx) { addToCart(allProducts[idx]); };
 window.handleQuickOrder = function(idx) { openQuickOrder(allProducts[idx]); };
@@ -333,12 +305,14 @@ function openQuickOrder(p) {
   
 function closeQuickOrder() { document.getElementById("quickOrderBox").classList.add("hidden"); }  
   
-// 🔥 FIXED QUICK ORDER MAPPING (Saare columns bharega)
+// ⚡ FIXED: Quick order ka maal bhi directly Firebase stock update aur BTC sheet parameters pe chalega
 async function confirmQuickOrder() {  
     const btn = document.getElementById("quickSubmitBtn");
     const nameVal = document.getElementById("qName").value.trim();
     const mobileVal = document.getElementById("qMobile").value.trim();
     const addressVal = document.getElementById("qAddress").value.trim();
+    const qSize = document.getElementById("qSize").value.trim();
+    const qColor = document.getElementById("qColor").value.trim();
 
     if(!nameVal || !mobileVal || !addressVal) {
         return alert("Kripya poori detail bharein!");
@@ -351,115 +325,76 @@ async function confirmQuickOrder() {
     const pName = currentQuickItem["Product Name"] || currentQuickItem["ProductName"] || currentQuickItem.Name || currentQuickItem.name || "";
     const priceVal = currentQuickItem.Price || currentQuickItem.price || 0;
     const catVal = currentQuickItem.Category || currentQuickItem.category || "";
-    const descVal = currentQuickItem.Description || currentQuickItem.description || "";
 
-    const data = {  
-        "Customer Name": nameVal,  
-        "Mobile": mobileVal,  
-        "Address": addressVal,  
-        "Products": pName,  
-        "Total": priceVal,  
-        "BarcodeID": barcodeVal, // 🔥 Fixed as per sheet
-        "Price": priceVal,
-        "Size": document.getElementById("qSize").value.trim() || currentQuickItem.Size || "",
-        "Color": document.getElementById("qColor").value.trim() || currentQuickItem.Color || "",
-        "Category": catVal,
-        "Description": descVal,
-        "Stock": "1",
-        "Status": "Pending"  
-    };  
-    await submitLogic(data);  
-    btn.disabled = false;
-    btn.innerText = "CONFIRM ✅";
-    closeQuickOrder();  
-}  
+    const urlParams = `?action=addOrder`
+        + `&CustomerName=${encodeURIComponent(nameVal)}`
+        + `&Mobile=${encodeURIComponent(mobileVal)}`
+        + `&Address=${encodeURIComponent(addressVal)}`
+        + `&Products=${encodeURIComponent(pName + " (x1)")}`
+        + `&Total=${encodeURIComponent(priceVal)}`
+        + `&Barcode=${encodeURIComponent(barcodeVal)}`
+        + `&Price=${encodeURIComponent(priceVal)}`
+        + `&Size=${encodeURIComponent(qSize)}`
+        + `&Color=${encodeURIComponent(qColor)}`
+        + `&Category=${encodeURIComponent(catVal)}`
+        + `&Status=Pending`;
 
-
-// 🔥 FIXED CART ORDER MAPPING (Saare missing columns jod diye hain)
-async function submitOrder() {
-    const btn = document.getElementById("cartSubmitBtn");
-    const nameVal = document.getElementById("cName").value.trim();
-    const mobileVal = document.getElementById("mobile").value.trim();
-    const addressVal = document.getElementById("address").value.trim();
-
-    if (cart.length === 0) return alert("Aapka cart khali hai!");
-    if (!nameVal || !mobileVal || !addressVal) {
-        return alert("Kripya poori detail bharein!");
-    }
-
-    btn.disabled = true;
-    btn.innerText = "PROCESSING...";
-
-    const productNames = cart.map(item => {
-        const name = item["Product Name"] || item["ProductName"] || item.Name || item.name || "";
-        return `${name} (x${item.qty})`;
-    }).join(", ");
-    
-    const totalPrice = cart.reduce((sum, item) => sum + ((item.Price || item.price || 0) * item.qty), 0);
-    const firstBarcode = cart[0].Barcode || cart[0].barcode || "";
-    const firstPrice = cart[0].Price || cart[0].price || 0;
-    const firstSize = cart[0].Size || cart[0].size || "";
-    const firstColor = cart[0].Color || cart[0].color || "";
-    const firstCategory = cart[0].Category || cart[0].category || "";
-    const firstDesc = cart[0].Description || cart[0].description || "";
-    const totalQty = cart.reduce((sum, item) => sum + (item.qty || 1), 0);
-
-    const data = {  
-        "Customer Name": nameVal,  
-        "Mobile": mobileVal,  
-        "Address": addressVal,  
-        "Products": productNames,  
-        "Total": totalPrice,  
-        "BarcodeID": firstBarcode, // 🔥 Fixed as per sheet
-        "Price": firstPrice,
-        "Size": firstSize,
-        "Color": firstColor,
-        "Category": firstCategory,
-        "Description": firstDesc,
-        "Stock": String(totalQty),
-        "Status": "Pending"  
-    };  
-
-    await submitLogic(data);  
-    btn.disabled = false;
-    btn.innerText = "Place Order";
-    cart = []; 
-    updateCartUI();
-    document.getElementById("orderBox").classList.add("hidden");
-}
-
-  
-async function submitLogic(data) {  
-    try {  
-        await db.collection("orders").add(data);  
-        
-        await fetch(SHEET_URL, { 
-            method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "placeOrder", ...data }) 
-        });
-
-        const barcodeParam = data.Barcode;
-        if(barcodeParam) {
-            await fetch(SHEET_URL + `?action=updateStock&barcode=${encodeURIComponent(barcodeParam)}&qty=1`, { mode: "no-cors" });
-
-            const fbSnap = await db.collection("products").where("Barcode", "==", barcodeParam).get();
-            fbSnap.forEach(doc => {
-                let currentStock = parseInt(doc.data().Stock || doc.data().stock) || 1;
-                let newStock = currentStock - 1;
-                if(newStock < 0) newStock = 0;
-                doc.ref.update({ Stock: newStock });
+    try {
+        if(barcodeVal) {
+            const productRef = db.collection("products").doc(barcodeVal);
+            await productRef.update({
+                stock: firebase.firestore.FieldValue.increment(-1)
             });
         }
+        
+        const res = await fetch(SHEET_URL + urlParams);
+        await res.text();
 
-        alert("Order Success ✅ Stock Updated");  
-        loadProducts(); 
-    } catch(e) { 
+        alert("🛍️ Quick Order lag gaya aur Stock kam ho gaya!");
+        closeQuickOrder();
+        
+        document.getElementById("qName").value = "";
+        document.getElementById("qMobile").value = "";
+        document.getElementById("qAddress").value = "";
+        document.getElementById("qSize").value = "";
+        document.getElementById("qColor").value = "";
+        loadProducts();
+
+    } catch(e) {
         console.error(e);
-        alert("Error ❌ Code Check Karein"); 
-    }  
+        alert("Error ❌ Code Check Karein");
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "CONFIRM ✅";
+    }
 }  
+
+// 📦 NOTE: Tumhare code me renderProducts function missing tha, jo product card banta hai. Isliye isko add kiya hai taaki UI blank na ho.
+function renderProducts(productsList) {
+    const container = document.getElementById("products");
+    container.innerHTML = ""; 
+    productsList.forEach((item, index) => {
+        const pName = item["Product Name"] || item["ProductName"] || item.productname || item.Name || item.name || "No Name";
+        const price = item.Price || item.price || 0;
+        const img = item.image || item.ImageUrl || item["Image URL"] || "https://via.placeholder.com/150";
+        
+        container.innerHTML += `
+            <div class="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between product-card">
+                <div>
+                    <img src="${img}" class="w-full h-32 object-cover rounded-lg">
+                    <h3 class="font-bold text-gray-800 text-sm mt-1 line-clamp-2">${pName}</h3>
+                </div>
+                <div class="mt-2">
+                    <span class="text-red-600 font-extrabold text-base">₹${price}</span>
+                    <div class="grid grid-cols-2 gap-1 mt-2">
+                        <button onclick="window.handleAddToCart(${index})" class="bg-gray-100 text-gray-800 font-bold py-1 px-1 text-xs rounded-lg">+ Cart</button>
+                        <button onclick="window.handleQuickOrder(${index})" class="bg-yellow-400 text-gray-900 font-extrabold py-1 px-1 text-xs rounded-lg">BUY NOW</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+}
   
 loadProducts();  
 
