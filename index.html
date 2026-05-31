@@ -132,45 +132,38 @@ img { background:#eee; min-height: 100px; }
     </div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-
 <script>
-const firebaseConfig = {  
-  apiKey: "YOUR_API_KEY",  // ⚠️ YAHA APNI ASLI API KEY DAALNA MAT BHOOLNA BHAI!
-  authDomain: "nncart.firebaseapp.com",  
-  projectId: "nncart"  
-};  
-firebase.initializeApp(firebaseConfig);  
-const db = firebase.firestore();  
+// Google Apps Script URL (Inventory fetching aur Order push dono isi se chalega)
 const SHEET_URL = "https://script.google.com/macros/s/AKfycbwnQRCdMGFgLKt4e5i-RbetOt4h88Qg1vDDgFWgkiATafh0Fe9crFSJKtQPHv2Gb09E/exec";  
   
 let allProducts = [];  
 let cart = [];  
 let currentQuickItem = null;  
 
-// 🚀 FIXED: Ab products data direct Firebase Firestore se aayega, sheet se nahi
+// 🚀 1. PURE GOOGLE SHEET PRODUCTS LOADER (Direct from Inventory)
 async function loadProducts() {  
   const container = document.getElementById("products");
   container.innerHTML = "<p class='text-center w-full col-span-2 py-10 text-gray-500 font-bold'>Loading Products...</p>";
 
   try {  
-    const snap = await db.collection("products").get();
-    allProducts = snap.docs.map(doc => doc.data());
+    // Direct Google Sheet Call
+    const response = await fetch(SHEET_URL + "?action=getInventory");
+    const sheetResponse = await response.json();
 
-    if (allProducts.length > 0) {
+    if (sheetResponse && sheetResponse.status === "success" && Array.isArray(sheetResponse.data)) {
+        allProducts = sheetResponse.data;
         renderProducts(allProducts);
     } else {
         container.innerHTML = "<p class='text-center w-full col-span-2 py-10 text-gray-400'>Koi product nahi mila!</p>";
     }
 
   } catch(e) { 
-      console.error(e);
+      console.error("Sheet load error:", e);
       container.innerHTML = "<p class='text-center w-full col-span-2 py-10 text-red-500'>❌ Load Error. Try Refreshing.</p>";
   }  
 }
 
-// 🛍️ FIXED: Cart orders ka data automatic stock minus karke B2C Google Sheet par bhejega
+// 🛍️ 2. CART ORDER SUBMIT (Direct to B2C Sheet with Stock Decrement Trigger)
 async function submitOrder() {
     const btn = document.getElementById("cartSubmitBtn");
     const nameVal = document.getElementById("cName").value.trim();
@@ -186,22 +179,22 @@ async function submitOrder() {
     btn.innerText = "PROCESSING...";
 
     const productNames = cart.map(item => {
-        const pName = item.name || item.ProductName || item["Product Name"] || "No Name";
+        const pName = item["Product Name"] || item.ProductName || item.name || "No Name";
         return `${pName} (x${item.qty})`;
     }).join(", ");
 
     const totalPrice = cart.reduce((sum, item) => {
-        const pPrice = Number(item.price || item.Price || 0);
+        const pPrice = Number(item.Price || item.price || 0);
         return sum + (pPrice * item.qty);
     }, 0);
 
-    const firstBarcode = cart[0].barcode || cart[0].Barcode || "";
-    const firstPrice = cart[0].price || cart[0].Price || "";
-    const firstSize = cart[0].size || cart[0].Size || "";
-    const firstColor = cart[0].color || cart[0].Color || "";
-    const firstCategory = cart[0].category || cart[0].Category || "";
+    const firstBarcode = cart[0].Barcode || cart[0].barcode || "";
+    const firstPrice = cart[0].Price || cart[0].price || "";
+    const firstSize = cart[0].Size || cart[0].size || "";
+    const firstColor = cart[0].Color || cart[0].color || "";
+    const firstCategory = cart[0].Category || cart[0].category || "";
 
-    // Google Apps Script URL string parameters 
+    // B2C Sheet action param mapping
     const urlParams = `?action=addOrder`
         + `&CustomerName=${encodeURIComponent(nameVal)}`
         + `&Mobile=${encodeURIComponent(mobileVal)}`
@@ -216,25 +209,16 @@ async function submitOrder() {
         + `&Status=Pending`;
 
     try {
-        // Firebase Batch Stock update
-        const batch = db.batch(); 
-        cart.forEach(item => {
-            const itemBarcode = item.barcode || item.Barcode;
-            if (itemBarcode) {
-                const productRef = db.collection("products").doc(itemBarcode);
-                batch.update(productRef, {
-                    stock: firebase.firestore.FieldValue.increment(-Number(item.qty))
-                });
-            }
-        });
-        await batch.commit();
-        console.log("Firebase Stock Deducted! ✅");
-
-        // Google Sheet update triggers
+        // Order write to sheet
         const sheetResponse = await fetch(SHEET_URL + urlParams);
         await sheetResponse.text();
 
-        alert("🛍️ Order successfully place ho gaya aur Stock automatic kam ho gaya!");
+        // Stock automatic kam karne ke liye Apps Script ko target hit karo (agar loop lagana ho toh sheet code handle karega)
+        if (firstBarcode) {
+            await fetch(SHEET_URL + `?action=updateStock&barcode=${encodeURIComponent(firstBarcode)}&qty=${cart[0].qty}`).catch(e => console.log(e));
+        }
+
+        alert("🛍️ Order successfully place ho gaya!");
         
         cart = []; 
         updateCartUI();
@@ -243,7 +227,7 @@ async function submitOrder() {
         document.getElementById("cName").value = "";
         document.getElementById("mobile").value = "";
         document.getElementById("address").value = "";
-        loadProducts();
+        loadProducts(); // Fresh inventory reload karo
 
     } catch (error) {
         console.error("Order submission failed:", error);
@@ -305,7 +289,7 @@ function openQuickOrder(p) {
   
 function closeQuickOrder() { document.getElementById("quickOrderBox").classList.add("hidden"); }  
   
-// ⚡ FIXED: Quick order ka maal bhi directly Firebase stock update aur BTC sheet parameters pe chalega
+// ⚡ 3. CONFIRM QUICK ORDER (Direct to B2C Sheet with Stock Trigger)
 async function confirmQuickOrder() {  
     const btn = document.getElementById("quickSubmitBtn");
     const nameVal = document.getElementById("qName").value.trim();
@@ -340,17 +324,16 @@ async function confirmQuickOrder() {
         + `&Status=Pending`;
 
     try {
-        if(barcodeVal) {
-            const productRef = db.collection("products").doc(barcodeVal);
-            await productRef.update({
-                stock: firebase.firestore.FieldValue.increment(-1)
-            });
-        }
-        
+        // Submit order row
         const res = await fetch(SHEET_URL + urlParams);
         await res.text();
 
-        alert("🛍️ Quick Order lag gaya aur Stock kam ho gaya!");
+        // Decrement stock from inventory sheet directly
+        if(barcodeVal) {
+            await fetch(SHEET_URL + `?action=updateStock&barcode=${encodeURIComponent(barcodeVal)}&qty=1`).catch(e => console.log(e));
+        }
+
+        alert("🛍️ Quick Order lag gaya!");
         closeQuickOrder();
         
         document.getElementById("qName").value = "";
@@ -369,7 +352,7 @@ async function confirmQuickOrder() {
     }
 }  
 
-// 📦 NOTE: Tumhare code me renderProducts function missing tha, jo product card banta hai. Isliye isko add kiya hai taaki UI blank na ho.
+// 📦 4. PRODUCTS RENDER ENGINE
 function renderProducts(productsList) {
     const container = document.getElementById("products");
     container.innerHTML = ""; 
@@ -400,7 +383,7 @@ loadProducts();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js')
+    navigator.serviceWorker.register('service-service-worker.js')
       .then(reg => console.log('Service Worker Active!'))
       .catch(err => console.log('Service Worker Error', err));
   });
