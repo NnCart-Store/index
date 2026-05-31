@@ -189,82 +189,95 @@ async function loadProducts() {
   }  
 }
 
-function renderProducts(productsList) {
-    const container = document.getElementById("products");
-    container.innerHTML = ""; 
+async function submitOrder() {
+    const btn = document.getElementById("cartSubmitBtn");
+    const nameVal = document.getElementById("cName").value.trim();
+    const mobileVal = document.getElementById("mobile").value.trim();
+    const addressVal = document.getElementById("address").value.trim();
 
-    productsList.forEach(item => {
-        // 🔍 DEBUGGING LINE: Browser Console (F12) me dikhega ki exact keys kya aa rahi hain
-        console.log("Product Item Data:", item);
+    if (cart.length === 0) return alert("Aapka cart khali hai!");
+    if (!nameVal || !mobileVal || !addressVal) {
+        return alert("Kripya poori detail bharein!");
+    }
 
-        // Standard checks for name, price, and image
-        const productName = item.name || item.ProductName || item["Product Name"] || "No Name";
-        const currentPrice = Number(item.price || item.Price || 0);
-        const mrpPrice = Number(item.mrp || item.MRP || Math.round(currentPrice * 1.3));
-        const imageUrl = item.image || item.ImageUrl || item["Image URL"] || "https://via.placeholder.com/150";
-        const itemBarcode = item.barcode || item.Barcode || "";
+    btn.disabled = true;
+    btn.innerText = "PROCESSING...";
+
+    // 1. Details nikalna (Aapke purane logic ke mutabik keys fix ki hain)
+    const productNames = cart.map(item => {
+        const pName = item.name || item.ProductName || item["Product Name"] || "No Name";
+        return `${pName} (x${item.qty})`;
+    }).join(", ");
+
+    const totalPrice = cart.reduce((sum, item) => {
+        const pPrice = Number(item.price || item.Price || 0);
+        return sum + (pPrice * item.qty);
+    }, 0);
+
+    const firstBarcode = cart[0].barcode || cart[0].Barcode || "";
+    const firstPrice = cart[0].price || cart[0].Price || "";
+    const firstSize = cart[0].size || cart[0].Size || "";
+    const firstColor = cart[0].color || cart[0].Color || "";
+    const firstCategory = cart[0].category || cart[0].Category || "";
+
+    // 🔥 Galti 1 Fix: Google Apps Script ke liye Query Parameters taiyar karna
+    // Isse sheet ke "order" tab me data sahi columns me jayega
+    const urlParams = `?action=addOrder` // Aapka order save karne ka action name
+        + `&CustomerName=${encodeURIComponent(nameVal)}`
+        + `&Mobile=${encodeURIComponent(mobileVal)}`
+        + `&Address=${encodeURIComponent(addressVal)}`
+        + `&Products=${encodeURIComponent(productNames)}`
+        + `&Total=${encodeURIComponent(totalPrice)}`
+        + `&Barcode=${encodeURIComponent(firstBarcode)}`
+        + `&Price=${encodeURIComponent(firstPrice)}`
+        + `&Size=${encodeURIComponent(firstSize)}`
+        + `&Color=${encodeURIComponent(firstColor)}`
+        + `&Category=${encodeURIComponent(firstCategory)}`
+        + `&Status=Pending`;
+
+    try {
+        // 🔥 Galti 2 Fix: Sabse pehle Firebase se automatic stock minus (-) karo
+        const batch = db.batch(); // Firebase Transaction Batch
         
-        // 🔥 ULTIMATE STOCK FIX: Har tarah ke format (String, Object, Empty) se bachne ke liye tight check
-        let finalStock = 10; // Default backup stock taaki product sold out na dikhe
-
-        // 1. Agar item ke paas 'Stock' ya 'stock' key hai
-        let detectedStock = item.Stock !== undefined ? item.Stock : item.stock;
-
-        // 2. Agar stock mila hai aur woh khali string nahi hai, toh check karein
-        if (detectedStock !== undefined && detectedStock !== null && detectedStock !== "") {
-            finalStock = Number(detectedStock);
-            
-            // Agar number convert karne par NaN (Not a Number) ho jaye, toh use 10 maan lo
-            if (isNaN(finalStock)) {
-                finalStock = 10;
+        cart.forEach(item => {
+            const itemBarcode = item.barcode || item.Barcode;
+            if (itemBarcode) {
+                const productRef = db.collection("products").doc(itemBarcode);
+                // Firebase automatic stock me se quantity kam kar dega
+                batch.update(productRef, {
+                    stock: firebase.firestore.FieldValue.increment(-Number(item.qty))
+                });
             }
-        } else {
-            // Agar Google Sheet me pure 10 columns me se stock column khali chhoda hua hai
-            finalStock = 10; 
-        }
+        });
+        
+        // Firebase me stock update lock karo
+        await batch.commit();
+        console.log("Firebase Stock Deducted Successfully! ✅");
 
-        // Ab decide hoga ki sold out dikhana hai ya nahi
-        const isSoldOut = finalStock <= 0;
+        // 3. Ab Google Sheet me order bhej do
+        // (Aapke SHEET_URL me params jod kar fetch chala rahe hain)
+        const sheetResponse = await fetch(SHEET_URL + urlParams);
+        const resultText = await sheetResponse.text();
 
-        // Sold out badge aur button styles
-        const soldOutBadge = isSoldOut ? `<span class="absolute top-2 right-2 bg-red-600 text-white text-xs font-extrabold px-2.5 py-1 rounded-full shadow-md z-10 animate-pulse">SOLD OUT</span>` : '';
-        const disabledAttr = isSoldOut ? 'disabled' : '';
-        const buyBtnClass = isSoldOut 
-            ? 'bg-gray-300 text-gray-500 cursor-not-allowed font-extrabold py-2 px-1 text-xs rounded-lg' 
-            : 'bg-yellow-400 text-gray-900 font-extrabold py-2 px-1 text-xs rounded-lg hover:bg-yellow-500 transition shadow-sm';
-        const cartBtnClass = isSoldOut 
-            ? 'bg-gray-100 text-gray-400 cursor-not-allowed font-bold py-2 px-1 text-xs rounded-lg' 
-            : 'bg-gray-100 text-gray-800 font-bold py-2 px-1 text-xs rounded-lg hover:bg-gray-200 transition';
-        const buyBtnText = isSoldOut ? 'OUT OF STOCK' : 'BUY NOW';
+        alert("🛍️ Order successfully place ho gaya aur Stock automatic kam ho gaya!");
+        
+        // 4. Cart aur UI reset karein
+        cart = []; 
+        updateCartUI();
+        document.getElementById("orderBox").classList.add('hidden');
+        
+        // Form clear karein
+        document.getElementById("cName").value = "";
+        document.getElementById("mobile").value = "";
+        document.getElementById("address").value = "";
 
-        const cardHtml = `
-            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between relative">
-                ${soldOutBadge}
-                
-                <div>
-                    <div class="relative w-full pt-[100%] rounded-lg overflow-hidden bg-gray-50 ${isSoldOut ? 'opacity-60' : ''}">
-                        <img src="${imageUrl}" alt="${productName}" class="absolute top-0 left-0 w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/150'">
-                    </div>
-                    <div class="flex items-center mt-2 text-amber-500 text-xs">
-                        ⭐⭐⭐⭐⭐ <span class="text-gray-400 ml-1">(5)</span>
-                    </div>
-                    <h3 class="font-bold text-gray-800 text-sm mt-1 line-clamp-2 ${isSoldOut ? 'text-gray-400 line-through' : ''}">${productName}</h3>
-                </div>
-                
-                <div class="mt-2">
-                    <div class="flex items-baseline gap-1">
-                        <span class="${isSoldOut ? 'text-gray-400' : 'text-red-600'} font-extrabold text-base">₹${currentPrice}</span>
-                        <span class="text-gray-400 line-through text-xs">₹${mrpPrice}</span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-1 mt-3">
-                        <button onclick="addToCart(this)" data-barcode="${itemBarcode}" ${disabledAttr} class="${cartBtnClass}">+ Cart</button>
-                        <button onclick="quickOrder(this)" data-barcode="${itemBarcode}" ${disabledAttr} class="${buyBtnClass}">${buyBtnText}</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        container.innerHTML += cardHtml;
-    });
+    } catch (error) {
+        console.error("Order submission failed:", error);
+        alert("❌ Order fail ho gaya! Kripya connection check karein.");
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "Place Order";
+    }
 }
 
 
